@@ -9,7 +9,7 @@ import argparse
 import json
 import networkx as nx
 from pathlib import Path
-import plotly as go
+import plotly.graph_objects as go
 
 
 def form_graph(input_file, node_index, edge_index):
@@ -180,7 +180,7 @@ def append_country_information(input_file, node_index, results):
     return results
 
 
-def visualize(graph):
+def visualize_network(graph):
     """Visualize a networkx network graph.
 
     Args:
@@ -208,7 +208,7 @@ def visualize(graph):
             + str(graph.get_edge_data(edge[0], edge[1])["weight"])
         )
 
-        trace = go.graph_objects.Scatter(
+        trace = go.Scatter(
             x=[x0, x1, None],
             y=[y0, y1, None],
             line=dict(
@@ -222,7 +222,7 @@ def visualize(graph):
         edge_trace.append(trace)
 
     # Make a node trace
-    node_trace = go.graph_objects.Scatter(
+    node_trace = go.Scatter(
         x=[],
         y=[],
         text=[],
@@ -242,14 +242,14 @@ def visualize(graph):
         node_trace["text"] += tuple(["<b>" + node + "</b>"])
 
     # Customize layout
-    layout = go.graph_objects.Layout(
+    layout = go.Layout(
         paper_bgcolor="rgba(0,0,0,0)",  # transparent background
         plot_bgcolor="rgba(0,0,0,0)",  # transparent 2nd background
         xaxis={"showgrid": False, "zeroline": False},  # no gridlines
         yaxis={"showgrid": False, "zeroline": False},  # no gridlines
     )
     # Create figure
-    fig = go.graph_objects.Figure(layout=layout)
+    fig = go.Figure(layout=layout)
     # Add all edge traces
     for trace in edge_trace:
         fig.add_trace(trace)
@@ -262,6 +262,65 @@ def visualize(graph):
     fig.update_yaxes(showticklabels=False)
     # Show figure
     fig.show()
+
+def visualize_countries(results, prune_num, country=None):
+
+    rankings = []
+    keys = []
+    countries = []
+    page_rank = results["page_rank"]
+    i = 0
+
+    for rank in page_rank:
+        if i == prune_num: break
+        top_country = max(page_rank[rank], key=page_rank[rank].get)
+        if country:
+            if country.upper() == top_country.upper():
+                rankings.append(rank)
+                countries.append(top_country)
+        else:
+            rankings.append(rank)
+            countries.append(top_country)
+
+    # TODO: Read header values from input file
+
+    fig = go.Figure(data=[go.Table(header=dict(values=['Node', 'Country']),
+                                   cells=dict(values=[rankings, countries]))
+                          ])
+    fig.show()
+
+def prune_graph(graph, results, prune_num):
+
+    top_rankings = {}
+    pruned_graph = graph.copy()
+    nodes = graph.nodes()
+
+    for i, (k, v) in enumerate(results["page_rank"].items()):
+        if i == prune_num: break
+        top_rankings[k] = v
+
+    for node in nodes:
+        if node not in top_rankings:
+            pruned_graph.remove_node(node)
+
+    return pruned_graph
+
+def prune_by_country(graph, results, country):
+
+
+    country_results = {}
+    country_graph = graph.copy()
+    nodes = graph.nodes()
+
+    for i, (k, v) in enumerate(results["page_rank"].items()):
+        if country.upper() in (nation.upper() for nation in v):
+            country_results[k] = v
+
+    for node in nodes:
+        if node not in country_results:
+            country_graph.remove_node(node)
+
+    return country_graph
 
 
 def parse_command_line_arguments():
@@ -287,6 +346,16 @@ def parse_command_line_arguments():
         help="Filepath to csv file for analysis",
     )
     parser.add_argument(
+        "--country",
+        help="Include only results from specific country",
+    )
+    parser.add_argument(
+        "--prune",
+        default=100,
+        type=int,
+        help="Prune results based on top PageRank score",
+    )
+    parser.add_argument(
         "--filename",
         default=None,
         help="Base file name for analysis results (timestamp will be added)",
@@ -297,11 +366,24 @@ def parse_command_line_arguments():
 if __name__ == "__main__":
     args = parse_command_line_arguments()
 
+    # Form graph
     graph = form_graph(args.filepath, args.node_index, args.edge_index)
-    # visualize(graph)
+
+    # Analyze graph
     results = analyze(graph)
     locational_results = append_country_information(
         args.filepath, args.node_index, results
     )
+
+    # Prune graph
+    pruned_graph = prune_graph(graph, results, args.prune)
+    if args.country:
+        pruned_graph = prune_by_country(graph, results, args.country)
+
+    # Visualize Results
+    visualize_network(pruned_graph)
+    visualize_countries(results, args.prune, args.country)
+
+    # Save Results
     filename = args.filename or args.filepath
     write_graph_results(filename, locational_results)
