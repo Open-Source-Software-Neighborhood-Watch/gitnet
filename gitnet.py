@@ -263,7 +263,8 @@ def visualize_network(graph):
     # Show figure
     fig.show()
 
-def visualize_countries(results, prune_num, country=None):
+
+def summarize_countries(results, prune_num, country=None):
 
     rankings = []
     keys = []
@@ -272,7 +273,8 @@ def visualize_countries(results, prune_num, country=None):
     i = 0
 
     for rank in page_rank:
-        if i == prune_num: break
+        if i == prune_num:
+            break
         top_country = max(page_rank[rank], key=page_rank[rank].get)
         if country:
             if country.upper() == top_country.upper():
@@ -284,10 +286,16 @@ def visualize_countries(results, prune_num, country=None):
 
     # TODO: Read header values from input file
 
-    fig = go.Figure(data=[go.Table(header=dict(values=['Node', 'Country']),
-                                   cells=dict(values=[rankings, countries]))
-                          ])
+    fig = go.Figure(
+        data=[
+            go.Table(
+                header=dict(values=["Node", "Country"]),
+                cells=dict(values=[rankings, countries]),
+            )
+        ]
+    )
     fig.show()
+
 
 def prune_graph(graph, results, prune_num):
 
@@ -296,7 +304,8 @@ def prune_graph(graph, results, prune_num):
     nodes = graph.nodes()
 
     for i, (k, v) in enumerate(results["page_rank"].items()):
-        if i == prune_num: break
+        if i == prune_num:
+            break
         top_rankings[k] = v
 
     for node in nodes:
@@ -305,8 +314,8 @@ def prune_graph(graph, results, prune_num):
 
     return pruned_graph
 
-def prune_by_country(graph, results, country):
 
+def prune_by_country(graph, results, country):
 
     country_results = {}
     country_graph = graph.copy()
@@ -350,7 +359,7 @@ def parse_command_line_arguments():
         help="Include only results from specific country",
     )
     parser.add_argument(
-        "--prune",
+        "--prune-size",
         default=100,
         type=int,
         help="Prune results based on top PageRank score",
@@ -375,15 +384,15 @@ if __name__ == "__main__":
         args.filepath, args.node_index, results
     )
 
+    # Save Results
+    filename = args.filename or args.filepath
+    write_graph_results(filename, locational_results)
+
     # Prune graph
-    pruned_graph = prune_graph(graph, results, args.prune)
+    pruned_graph = prune_graph(graph, results, args.prune_size)
     if args.country:
         pruned_graph = prune_by_country(graph, results, args.country)
 
     # Visualize Results
     visualize_network(pruned_graph)
-    visualize_countries(results, args.prune, args.country)
-
-    # Save Results
-    filename = args.filename or args.filepath
-    write_graph_results(filename, locational_results)
+    summarize_countries(results, args.prune_size, args.country)
