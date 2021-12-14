@@ -279,7 +279,6 @@ def summarize_countries(results, prune_num, country=None):
     """
 
     rankings = []
-    keys = []
     countries = []
     page_rank = results["page_rank"]
     i = 0
@@ -292,9 +291,11 @@ def summarize_countries(results, prune_num, country=None):
             if country.upper() == top_country.upper():
                 rankings.append(rank)
                 countries.append(top_country)
+                i+=1
         else:
             rankings.append(rank)
             countries.append(top_country)
+            i+=1
 
     # TODO: Read header values from input file
 
