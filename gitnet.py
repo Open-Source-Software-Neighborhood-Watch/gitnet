@@ -58,7 +58,7 @@ def form_graph(input_file, node_index, edge_index):
     return G
 
 
-def analyze(graph):
+def analyze(graph, quick_analysis=False):
     """Analyzes an input networkx graph.
 
     Calculations done:
@@ -72,6 +72,7 @@ def analyze(graph):
 
     Args:
         graph - networkx graph with weight="weight"
+        quick_analysis - bool that removes calculations not needed for visualization
 
     Returns:
         results - a dictionary with all finished calculations
@@ -79,17 +80,21 @@ def analyze(graph):
 
     results = {}
 
-    results["assortativity"] = nx.degree_assortativity_coefficient(
-        graph, weight="weight"
-    )
-    results["average_clustering"] = nx.algorithms.cluster.average_clustering(
-        graph, weight="weight"
-    )
-    degree = dict(graph.degree(weight="weight"))
-    results["avg_degree"] = sum(degree.values()) / len(degree)
-    results["density"] = nx.density(graph)
-    results["edge_num"] = len(graph.edges())
-    results["node_num"] = len(graph.nodes)
+    if not quick_analysis:
+        results["assortativity"] = nx.degree_assortativity_coefficient(
+            graph, weight="weight"
+        )
+        results["average_clustering"] = nx.algorithms.cluster.average_clustering(
+            graph, weight="weight"
+        )
+        degree = dict(graph.degree(weight="weight"))
+        results["avg_degree"] = sum(degree.values()) / len(degree)
+        results["density"] = nx.density(graph)
+        results["edge_num"] = len(graph.edges())
+        results["node_num"] = len(graph.nodes)
+
+        # Hyperlink-Induced Topic Search (HITS) algorithm
+        results["hits"] = nx.algorithms.link_analysis.hits_alg.hits(graph)
 
     # Google PageRank algorithm
     page_ranks = nx.algorithms.link_analysis.pagerank_alg.pagerank(graph)
@@ -101,9 +106,6 @@ def analyze(graph):
             page_ranks.items(), reverse=True, key=lambda item: item[1]
         )
     }
-
-    # Hyperlink-Induced Topic Search (HITS) algorithm
-    results["hits"] = nx.algorithms.link_analysis.hits_alg.hits(graph)
 
     return results
 
@@ -265,6 +267,16 @@ def visualize_network(graph):
 
 
 def summarize_countries(results, prune_num, country=None):
+    """Creates table with nodes and their associated country.
+
+    Args:
+        results - dictionary of analysis results
+        prune_num - number of rows to show
+        country - show only nodes from specified country. For repos, shows only countries with majority of contributors from that country
+
+    Returns:
+        null
+    """
 
     rankings = []
     keys = []
@@ -298,6 +310,16 @@ def summarize_countries(results, prune_num, country=None):
 
 
 def prune_graph(graph, results, prune_num):
+    """Prunes graph to specific size, based on connectivity ratings
+
+    Args:
+        graph - networkx graph
+        results - dictionary of analysis results
+        prune_num - number of nodes to prune to
+
+    Returns:
+        pruned_graph - new networkx graph that has been pruned to prune_num size
+    """
 
     top_rankings = {}
     pruned_graph = graph.copy()
@@ -320,6 +342,16 @@ def prune_graph(graph, results, prune_num):
 
 
 def prune_by_country(graph, results, country):
+    """Prunes graph to only include results from specific countries
+
+    Args:
+        graph - networkx graph
+        results - dictionary of analysis results
+        country - country to sort by
+
+    Returns:
+        country_graph - new networkx graph that has been pruned include only specified country
+    """
 
     country_results = {}
     country_graph = graph.copy()
@@ -373,6 +405,11 @@ def parse_command_line_arguments():
         default=None,
         help="Base file name for analysis results (timestamp will be added)",
     )
+    parser.add_argument(
+        "--quick-analysis",
+        action="store_true",
+        help="Whether to do a full graph analysis or just enough for visualization",
+    )
     return parser.parse_args()
 
 
@@ -383,7 +420,7 @@ if __name__ == "__main__":
     graph = form_graph(args.filepath, args.node_index, args.edge_index)
 
     # Analyze graph
-    results = analyze(graph)
+    results = analyze(graph, args.quick_analysis)
     locational_results = append_country_information(
         args.filepath, args.node_index, results
     )
