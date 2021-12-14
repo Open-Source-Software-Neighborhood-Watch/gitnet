@@ -303,10 +303,14 @@ def prune_graph(graph, results, prune_num):
     pruned_graph = graph.copy()
     nodes = graph.nodes()
 
-    for i, (k, v) in enumerate(results["page_rank"].items()):
+    i = 0
+    for (k, v) in results["page_rank"].items():
+        if k not in graph.nodes():
+            continue
         if i == prune_num:
             break
         top_rankings[k] = v
+        i+=1
 
     for node in nodes:
         if node not in top_rankings:
@@ -389,9 +393,11 @@ if __name__ == "__main__":
     write_graph_results(filename, locational_results)
 
     # Prune graph
-    pruned_graph = prune_graph(graph, results, args.prune_size)
     if args.country:
         pruned_graph = prune_by_country(graph, results, args.country)
+        pruned_graph = prune_graph(pruned_graph, results, args.prune_size)
+    else:
+        pruned_graph = prune_graph(graph, results, args.prune_size)
 
     # Visualize Results
     visualize_network(pruned_graph)
