@@ -310,7 +310,7 @@ def prune_graph(graph, results, prune_num):
         if i == prune_num:
             break
         top_rankings[k] = v
-        i+=1
+        i += 1
 
     for node in nodes:
         if node not in top_rankings:
