@@ -12,7 +12,13 @@ from pathlib import Path
 import plotly.graph_objects as go
 
 
-def form_graph(input_file, node_index, edge_index):
+def form_graph(
+    input_file,
+    node_index,
+    edge_index,
+    recency_size=0,
+    recency_data="dat/bioconda_repo_info.json",
+):
     """Create a networkx graph from an input csv file.
 
     Reads csv file with one connection per line (such as github contributor and the project they worked on) and returns
@@ -28,10 +34,14 @@ def form_graph(input_file, node_index, edge_index):
         input_file - a csv file that contains information for graph, such as github contributors and projects
         node_index - csv index to be used for nodes
         edge_index - csv index to be used for edges
+        recency_size - int to trim repositories by x most recent
 
     Returns:
         G - a networkx graph
     """
+
+    if not recency_size == 0:
+        recency_list = get_recent_repos(recency_size, recency_data)
 
     edges = collections.defaultdict(list)
 
@@ -41,19 +51,47 @@ def form_graph(input_file, node_index, edge_index):
     with open(input_file, "r") as f:
 
         # Skip first line
-        next(f)
+        lines = f.readlines()[1:]
 
-        for line in f:
+        # Remove repos if they're not in the list of most recent repos
+        if not recency_size == 0:
+            lines_to_remove = []
+            for line in lines:
+                if not line.strip().split(",")[0] in recency_list:
+                    lines_to_remove.append(line)
+                else:
+                    print(line)
+
+            lines = [i for i in lines if i not in lines_to_remove]
+
+        for line in lines:
             info = line.strip().split(",")
             edges[info[edge_index]].append(info[node_index])
 
     for i in edges:
         edge_combinations = list(itertools.combinations(edges[i], 2))
-        for edge in edge_combinations:
-            if G.has_edge(edge[0], edge[1]):
-                G[edge[0]][edge[1]]["weight"] += 1
-            else:
-                G.add_edge(edge[0], edge[1], weight=1)
+        if edges[i] in [
+            "ChunhuaLiLab_aPRBind",
+            "LeidenRNA_SRHS",
+            "BorgwardtLab_MoProEmbeddings",
+            "Helena-todd_TInGa",
+            "marbl_Winnowmap",
+        ]:
+            print(edges[i])
+        if not edge_combinations:
+            # Empty list, add lone node
+            G.add_node(edges[i][0])
+        else:
+            for edge in edge_combinations:
+                if G.has_edge(edge[0], edge[1]):
+                    G[edge[0]][edge[1]]["weight"] += 1
+                else:
+                    G.add_edge(edge[0], edge[1], weight=1)
+
+    list_difference = []
+    for item in recency_list:
+        if item not in G.nodes():
+            list_difference.append(item)
 
     return G
 
@@ -291,13 +329,17 @@ def summarize_countries(results, prune_num, country=None):
             if country.upper() == top_country.upper():
                 rankings.append(rank)
                 countries.append(top_country)
-                i+=1
+                i += 1
         else:
             rankings.append(rank)
             countries.append(top_country)
-            i+=1
+            i += 1
 
     # TODO: Read header values from input file
+    with open("csv_output.csv", "w") as f:
+        f.write("Node,Country\n")
+        for i in range(0, len(rankings)):
+            f.write(f"{rankings[i]},{countries[i]}\n")
 
     fig = go.Figure(
         data=[
@@ -369,6 +411,31 @@ def prune_by_country(graph, results, country):
     return country_graph
 
 
+def get_recent_repos(recency_size, filepath):
+
+    repo_stems = []
+
+    # open and load json from file
+    with open(filepath, "r") as f:
+        repos = json.load(f)
+
+    # Remove None from list
+    repos = [i for i in repos if i]
+
+    # Sort by date
+    sorted_repos = sorted(repos, key=lambda d: d["created_at"], reverse=True)
+
+    # Trim by recency size
+    trimmed_repos = sorted_repos[:recency_size]
+
+    # Return list in GitGeo format {group}_{repo}
+    for repo in trimmed_repos:
+        repo_name = repo["full_name"].replace("/", "_")
+        repo_stems.append(repo_name)
+
+    return repo_stems
+
+
 def parse_command_line_arguments():
     """Parse command line arguments with argparse."""
     parser = argparse.ArgumentParser(
@@ -411,6 +478,17 @@ def parse_command_line_arguments():
         action="store_true",
         help="Whether to do a full graph analysis or just enough for visualization",
     )
+    parser.add_argument(
+        "--recency-size",
+        default=0,
+        type=int,
+        help="Trim input by x most recent repositories. 0 for no trim",
+    )
+    parser.add_argument(
+        "--recency-data",
+        default="dat/bioconda_repo_info.json",
+        help="For use with recency-size. Specifies path to jsonified GitHub repository api calls, including creation date.",
+    )
     return parser.parse_args()
 
 
@@ -418,7 +496,13 @@ if __name__ == "__main__":
     args = parse_command_line_arguments()
 
     # Form graph
-    graph = form_graph(args.filepath, args.node_index, args.edge_index)
+    graph = form_graph(
+        args.filepath,
+        args.node_index,
+        args.edge_index,
+        args.recency_size,
+        args.recency_data,
+    )
 
     # Analyze graph
     results = analyze(graph, args.quick_analysis)
@@ -426,13 +510,25 @@ if __name__ == "__main__":
         args.filepath, args.node_index, results
     )
 
-    # Save Results
-    filename = args.filename or args.filepath
-    write_graph_results(filename, locational_results)
+    # Save results
+    # filename = args.filename or args.filepath
+    # write_graph_results(filename, locational_results)
 
     # Prune graph
     if args.country:
         pruned_graph = prune_by_country(graph, results, args.country)
+        if not args.quick_analysis:
+            # Analyze country results
+            country_results = analyze(pruned_graph, args.quick_analysis)
+            country_locational_results = append_country_information(
+                args.filepath, args.node_index, country_results
+            )
+            # Save county results
+            filename = args.filename or args.filepath
+            write_graph_results(
+                f"{args.country}_{filename}", country_locational_results
+            )
+
         pruned_graph = prune_graph(pruned_graph, results, args.prune_size)
     else:
         pruned_graph = prune_graph(graph, results, args.prune_size)
